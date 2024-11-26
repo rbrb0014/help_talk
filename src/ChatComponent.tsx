@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import ChatLogs from "./ChatLogs";
 import UserNameInput from "./UserNameInput";
 import MessageInput from "./MessageInput";
+import axios from "axios";
 import { containerStyle } from "./css";
 
 const ChatComponent: React.FC = () => {
@@ -14,28 +15,59 @@ const ChatComponent: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (userName) {
-      wsRef.current = new WebSocket(`ws://localhost:8080/chat`);
-
-      wsRef.current.onopen = () => console.log("Connection opened");
-
-      wsRef.current.onmessage = (event) =>
-        setChatLogs((prevChatLogs) => [...prevChatLogs, event.data]);
-
-      wsRef.current.onclose = (event) => {
-        if (event.wasClean) {
-          console.log(
-            `[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`
-          );
+    const checkUserNameDuplicate = async () => {
+      try {
+        const response = await axios.get(
+          `http://localhost:8080/auth/user/${userName}`
+        );
+        
+        const isDuplicate = response.data;
+        if (isDuplicate) {
+          alert("이미 존재하는 사용자 이름입니다.");
+          setUserName("");
         } else {
-          console.log(`[close] Connection died, code=${event.code} reason=${event.reason}`);
-        }
-      };
+          wsRef.current = new WebSocket(`ws://localhost:8080/chat`);
 
-      return () => wsRef.current?.close();
+          wsRef.current.onopen = () => {
+            if (wsRef.current) {
+              let date = new Date();
+              const utcMiliseconds = date.getTime() + date.getTimezoneOffset() * 60 * 1000;
+              wsRef.current.send(`{"time": ${utcMiliseconds},"message":"${userName} has joined!"}`)
+            }
+          };
+          
+          wsRef.current.onmessage = (event) =>
+            setChatLogs((prevChatLogs) => [...prevChatLogs, event.data]);
+          
+          wsRef.current.onclose = (event) => {
+            if (event.wasClean) {
+              console.log(
+                `[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`
+              );
+            } else {
+              console.log(`[close] Connection died, code=${event.code} reason=${event.reason}`);
+            }
+            
+            alert("서버와의 연결이 초기화 되었습니다.");
+            setUserNameInput("");
+            setChatLogs(["Welcome to Talkky!"]);
+            setUserName("");
+          };
+          
+        }
+
+        return { userName, isDuplicate };
+      } catch (error) {
+        console.error("Error checking username duplicate:", error);
+        return { userName, isDuplicate: null };
+      }
+    };
+
+    if (userName.trim() !== "") {
+      checkUserNameDuplicate().then(({ userName, isDuplicate }) => console.log(`"${userName}" 중복 확인 결과: ${isDuplicate}`));
     }
 
-    return undefined;
+    return () => wsRef.current?.close();
   }, [userName]);
 
   const sendMessage = () => {
@@ -45,7 +77,10 @@ const ChatComponent: React.FC = () => {
       wsRef.current &&
       wsRef.current.readyState === WebSocket.OPEN
     ) {
-      let payload = JSON.stringify({ author: userName, message: message });
+      let date = new Date();
+      const utcMiliseconds = date.getTime() + date.getTimezoneOffset() * 60 * 1000;
+
+      let payload = JSON.stringify({ time: utcMiliseconds, author: userName, message: message });
       wsRef.current.send(payload);
 
       setMessage("");

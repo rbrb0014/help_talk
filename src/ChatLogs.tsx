@@ -11,11 +11,19 @@ const ChatLogs: React.FC<{ logs: string[] }> = ({ logs }) => {
 
         // 출력할 메세지 형태 설정
         var text = ""
-        if (log.author) {
-          text = `${log.author} : ${log.message}`
+        if (log?.time) {
+          const now = new Date()
+          var date = new Date(log.time)
+          // date가 UTC기준이니 로컬 시간으로 변환
+          date.setMinutes(date.getMinutes() - now.getTimezoneOffset())
+          // YYYY-MM-DD HH:MM:SS 형태로 변환
+          text += `[${date.toISOString().replace("T", " ").replace("Z", "").slice(0, -4)}] `
         }
-        else {
-          text = `${log.message}`
+        if (log?.author) {
+          text += `${log.author} : `
+        }
+        if (log?.message) {
+          text += log.message
         }
 
         return (
